@@ -40,11 +40,12 @@ The server will start at `http://localhost:3000`.
 
 ## API Endpoints
 
-| Method | Path          | Description                          |
-| ------ | ------------- | ------------------------------------ |
-| GET    | `/`           | Welcome message                      |
-| GET    | `/health`     | Health check + DB connectivity       |
-| POST   | `/api/users`  | Register new user (bcrypt password)  |
+| Method | Path                | Description                          |
+| ------ | ------------------- | ------------------------------------ |
+| GET    | `/`                 | Welcome message                      |
+| GET    | `/health`           | Health check + DB connectivity       |
+| POST   | `/api/users`        | Register new user (bcrypt password)  |
+| POST   | `/api/users/login`  | User login (generates session UUID)  |
 
 ## Scripts
 
@@ -52,6 +53,7 @@ The server will start at `http://localhost:3000`.
 | --------------- | ---------------------------------- |
 | `bun dev`       | Start dev server with watch mode   |
 | `bun start`     | Start production server            |
+| `bun test`      | Run automated integration tests    |
 | `bun run db:generate` | Generate migration files     |
 | `bun run db:push`     | Push schema to database      |
 | `bun run db:migrate`  | Run migrations               |
@@ -63,15 +65,16 @@ The server will start at `http://localhost:3000`.
 ├── src/
 │   ├── db/
 │   │   ├── index.ts          # Database connection
-│   │   └── schema.ts         # Drizzle schema definitions
+│   │   └── schema.ts         # Drizzle schema definitions (users, sessions)
 │   ├── routes/
 │   │   ├── health.ts         # Health check routes
-│   │   └── users-route.ts    # User API routes (POST /api/users)
+│   │   └── users-route.ts    # User API routes (POST /api/users, POST /api/users/login)
 │   ├── services/
-│   │   └── users-service.ts  # Business logic & bcrypt hashing
+│   │   └── users-service.ts  # Business logic, bcrypt hashing, sessions
 │   └── index.ts              # App entry point
 ├── test/
-│   └── register.test.ts      # Integration tests
+│   ├── login.test.ts         # Login & session tests
+│   └── register.test.ts      # Registration tests
 ├── drizzle.config.ts         # Drizzle Kit configuration
 ├── package.json
 ├── .env.example
