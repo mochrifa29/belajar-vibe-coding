@@ -27,6 +27,13 @@ export class AuthenticationError extends Error {
   }
 }
 
+export class UnauthorizedError extends Error {
+  constructor(message = "Unauthorized") {
+    super(message);
+    this.name = "UnauthorizedError";
+  }
+}
+
 export async function registerUser(input: RegisterUserInput) {
   // 1. Cek apakah email sudah terdaftar
   const [existingUser] = await db
@@ -87,4 +94,35 @@ export async function loginUser(input: LoginUserInput) {
   });
 
   return { token };
+}
+
+export async function getCurrentUser(token: string) {
+  // 1. Cari session berdasarkan token
+  const [session] = await db
+    .select()
+    .from(sessions)
+    .where(eq(sessions.token, token))
+    .limit(1);
+
+  if (!session) {
+    throw new UnauthorizedError();
+  }
+
+  // 2. Ambil data user terkait tanpa menyertakan password
+  const [user] = await db
+    .select({
+      id: users.id,
+      name: users.name,
+      email: users.email,
+      created_at: users.createdAt,
+    })
+    .from(users)
+    .where(eq(users.id, session.userId))
+    .limit(1);
+
+  if (!user) {
+    throw new UnauthorizedError();
+  }
+
+  return user;
 }

@@ -2,8 +2,10 @@ import { Elysia, t } from "elysia";
 import {
   registerUser,
   loginUser,
+  getCurrentUser,
   DuplicateEmailError,
   AuthenticationError,
+  UnauthorizedError,
 } from "../services/users-service";
 
 export const usersRoute = new Elysia({ prefix: "/api/users" })
@@ -78,4 +80,41 @@ export const usersRoute = new Elysia({ prefix: "/api/users" })
         password: t.String({ minLength: 1 }),
       }),
     }
-  );
+  )
+  .get("/current", async ({ headers, set }) => {
+    const authHeader = headers["authorization"];
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      set.status = 401;
+      return {
+        error: "Unauthorized",
+      };
+    }
+
+    const token = authHeader.slice(7).trim();
+    if (!token) {
+      set.status = 401;
+      return {
+        error: "Unauthorized",
+      };
+    }
+
+    try {
+      const user = await getCurrentUser(token);
+      set.status = 200;
+      return {
+        data: user,
+      };
+    } catch (error) {
+      if (error instanceof UnauthorizedError) {
+        set.status = 401;
+        return {
+          error: error.message,
+        };
+      }
+
+      set.status = 500;
+      return {
+        error: "Terjadi kesalahan pada server",
+      };
+    }
+  });

@@ -40,12 +40,13 @@ The server will start at `http://localhost:3000`.
 
 ## API Endpoints
 
-| Method | Path                | Description                          |
-| ------ | ------------------- | ------------------------------------ |
-| GET    | `/`                 | Welcome message                      |
-| GET    | `/health`           | Health check + DB connectivity       |
-| POST   | `/api/users`        | Register new user (bcrypt password)  |
-| POST   | `/api/users/login`  | User login (generates session UUID)  |
+| Method | Path                 | Headers                       | Description                              |
+| ------ | -------------------- | ----------------------------- | ---------------------------------------- |
+| GET    | `/`                  | -                             | Welcome message                          |
+| GET    | `/health`            | -                             | Health check + DB connectivity           |
+| POST   | `/api/users`         | -                             | Register new user (bcrypt password)      |
+| POST   | `/api/users/login`   | -                             | User login (generates session UUID)      |
+| GET    | `/api/users/current` | `Authorization: Bearer <tok>` | Get currently logged-in user profile     |
 
 ## Scripts
 
@@ -68,11 +69,12 @@ The server will start at `http://localhost:3000`.
 │   │   └── schema.ts         # Drizzle schema definitions (users, sessions)
 │   ├── routes/
 │   │   ├── health.ts         # Health check routes
-│   │   └── users-route.ts    # User API routes (POST /api/users, POST /api/users/login)
+│   │   └── users-route.ts    # User API routes (register, login, current)
 │   ├── services/
-│   │   └── users-service.ts  # Business logic, bcrypt hashing, sessions
+│   │   └── users-service.ts  # Business logic, bcrypt, sessions, auth
 │   └── index.ts              # App entry point
 ├── test/
+│   ├── current-user.test.ts  # Current user profile tests
 │   ├── login.test.ts         # Login & session tests
 │   └── register.test.ts      # Registration tests
 ├── drizzle.config.ts         # Drizzle Kit configuration
