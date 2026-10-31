@@ -126,3 +126,21 @@ export async function getCurrentUser(token: string) {
 
   return user;
 }
+
+export async function logoutUser(token: string) {
+  // 1. Verifikasi session ada
+  const [session] = await db
+    .select({ id: sessions.id })
+    .from(sessions)
+    .where(eq(sessions.token, token))
+    .limit(1);
+
+  if (!session) {
+    throw new UnauthorizedError();
+  }
+
+  // 2. Hapus session dari database
+  await db.delete(sessions).where(eq(sessions.token, token));
+
+  return { success: true };
+}
