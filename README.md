@@ -40,14 +40,11 @@ The server will start at `http://localhost:3000`.
 
 ## API Endpoints
 
-| Method | Path          | Description         |
-| ------ | ------------- | ------------------- |
-| GET    | `/`           | Welcome message     |
-| GET    | `/health`     | Health check + DB   |
-| GET    | `/users`      | Get all users       |
-| GET    | `/users/:id`  | Get user by ID      |
-| POST   | `/users`      | Create a new user   |
-| DELETE | `/users/:id`  | Delete user by ID   |
+| Method | Path          | Description                          |
+| ------ | ------------- | ------------------------------------ |
+| GET    | `/`           | Welcome message                      |
+| GET    | `/health`     | Health check + DB connectivity       |
+| POST   | `/api/users`  | Register new user (bcrypt password)  |
 
 ## Scripts
 
@@ -65,13 +62,17 @@ The server will start at `http://localhost:3000`.
 ```
 ├── src/
 │   ├── db/
-│   │   ├── index.ts       # Database connection
-│   │   └── schema.ts      # Drizzle schema definitions
+│   │   ├── index.ts          # Database connection
+│   │   └── schema.ts         # Drizzle schema definitions
 │   ├── routes/
-│   │   ├── health.ts      # Health check routes
-│   │   └── users.ts       # User CRUD routes
-│   └── index.ts           # App entry point
-├── drizzle.config.ts       # Drizzle Kit configuration
+│   │   ├── health.ts         # Health check routes
+│   │   └── users-route.ts    # User API routes (POST /api/users)
+│   ├── services/
+│   │   └── users-service.ts  # Business logic & bcrypt hashing
+│   └── index.ts              # App entry point
+├── test/
+│   └── register.test.ts      # Integration tests
+├── drizzle.config.ts         # Drizzle Kit configuration
 ├── package.json
 ├── .env.example
 └── tsconfig.json
