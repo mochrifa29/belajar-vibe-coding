@@ -1,9 +1,14 @@
 import { eq } from "drizzle-orm";
 import { db } from "../db";
-import { users } from "../db/schema";
+import { users, sessions } from "../db/schema";
 
 export interface RegisterUserInput {
   name: string;
+  email: string;
+  password: string;
+}
+
+export interface LoginUserInput {
   email: string;
   password: string;
 }
@@ -15,15 +20,22 @@ export class DuplicateEmailError extends Error {
   }
 }
 
+export class AuthenticationError extends Error {
+  constructor(message = "Email atau password salah") {
+    super(message);
+    this.name = "AuthenticationError";
+  }
+}
+
 export async function registerUser(input: RegisterUserInput) {
   // 1. Cek apakah email sudah terdaftar
-  const existingUser = await db
+  const [existingUser] = await db
     .select({ id: users.id })
     .from(users)
     .where(eq(users.email, input.email))
     .limit(1);
 
-  if (existingUser.length > 0) {
+  if (existingUser) {
     throw new DuplicateEmailError("Email sudah terdaftar");
   }
 
@@ -43,3 +55,36 @@ export async function registerUser(input: RegisterUserInput) {
   return { success: true };
 }
 
+export async function loginUser(input: LoginUserInput) {
+  // 1. Cari user berdasarkan email
+  const [user] = await db
+    .select()
+    .from(users)
+    .where(eq(users.email, input.email))
+    .limit(1);
+
+  if (!user) {
+    throw new AuthenticationError();
+  }
+
+  // 2. Verifikasi password hash bcrypt
+  const isPasswordValid = await Bun.password.verify(
+    input.password,
+    user.password
+  );
+
+  if (!isPasswordValid) {
+    throw new AuthenticationError();
+  }
+
+  // 3. Generate session token (UUID v4)
+  const token = crypto.randomUUID();
+
+  // 4. Simpan session token ke database
+  await db.insert(sessions).values({
+    token,
+    userId: user.id,
+  });
+
+  return { token };
+}
