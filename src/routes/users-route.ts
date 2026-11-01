@@ -27,6 +27,12 @@ const FIELD_LABEL = {
 /** TypeBox `ValueErrorType.StringMaxLength` */
 const TYPEBOX_STRING_MAX_LENGTH = 51;
 
+const bearerHeaderSchema = t.Object({
+  authorization: t.Optional(
+    t.String({ description: "Format: Bearer <token UUID>" })
+  ),
+});
+
 export const usersRoute = new Elysia({ prefix: "/api/users" })
   // Di Elysia 1.4 hook error harus didaftarkan sebelum route agar ikut
   // terpasang pada handler yang dikompilasi.
@@ -55,7 +61,7 @@ export const usersRoute = new Elysia({ prefix: "/api/users" })
     };
   })
   .post(
-    "/",
+    "",
     async ({ body, set }) => {
       try {
         await registerUser({
@@ -85,10 +91,27 @@ export const usersRoute = new Elysia({ prefix: "/api/users" })
     },
     {
       body: t.Object({
-        name: t.String({ minLength: 1, maxLength: MAX_LENGTH.name }),
-        email: t.String({ minLength: 1, maxLength: MAX_LENGTH.email }),
-        password: t.String({ minLength: 1 }),
+        name: t.String({
+          minLength: 1,
+          maxLength: MAX_LENGTH.name,
+          description: "Nama tampilan user (maksimal 255 karakter)",
+        }),
+        email: t.String({
+          minLength: 1,
+          maxLength: MAX_LENGTH.email,
+          description: "Email unik user (maksimal 255 karakter)",
+        }),
+        password: t.String({
+          minLength: 1,
+          description: "Password plaintext, akan di-hash dengan bcrypt",
+        }),
       }),
+      detail: {
+        tags: ["Auth"],
+        summary: "Registrasi user baru",
+        description:
+          "Membuat user baru. Mengembalikan 400 jika email sudah terdaftar.",
+      },
     }
   )
   .post(
@@ -121,66 +144,105 @@ export const usersRoute = new Elysia({ prefix: "/api/users" })
     },
     {
       body: t.Object({
-        email: t.String({ minLength: 1, maxLength: MAX_LENGTH.email }),
-        password: t.String({ minLength: 1 }),
+        email: t.String({
+          minLength: 1,
+          maxLength: MAX_LENGTH.email,
+          description: "Email yang terdaftar (maksimal 255 karakter)",
+        }),
+        password: t.String({
+          minLength: 1,
+          description: "Password plaintext milik user",
+        }),
       }),
+      detail: {
+        tags: ["Auth"],
+        summary: "Login user",
+        description:
+          "Memverifikasi email/password lalu membuat session token UUID. Pesan error sengaja sama untuk email tidak terdaftar dan password salah.",
+      },
     }
   )
-  .get("/current", async ({ headers, set }) => {
-    const token = extractBearerToken(headers);
-    if (!token) {
-      set.status = 401;
-      return {
-        error: "Unauthorized",
-      };
-    }
-
-    try {
-      const user = await getCurrentUser(token);
-      set.status = 200;
-      return {
-        data: user,
-      };
-    } catch (error) {
-      if (error instanceof UnauthorizedError) {
+  .get(
+    "/current",
+    async ({ headers, set }) => {
+      const token = extractBearerToken(headers);
+      if (!token) {
         set.status = 401;
         return {
-          error: error.message,
+          error: "Unauthorized",
         };
       }
 
-      set.status = 500;
-      return {
-        error: "Terjadi kesalahan pada server",
-      };
-    }
-  })
-  .delete("/logout", async ({ headers, set }) => {
-    const token = extractBearerToken(headers);
-    if (!token) {
-      set.status = 401;
-      return {
-        error: "Unauthorized",
-      };
-    }
+      try {
+        const user = await getCurrentUser(token);
+        set.status = 200;
+        return {
+          data: user,
+        };
+      } catch (error) {
+        if (error instanceof UnauthorizedError) {
+          set.status = 401;
+          return {
+            error: error.message,
+          };
+        }
 
-    try {
-      await logoutUser(token);
-      set.status = 200;
-      return {
-        data: "OK",
-      };
-    } catch (error) {
-      if (error instanceof UnauthorizedError) {
+        set.status = 500;
+        return {
+          error: "Terjadi kesalahan pada server",
+        };
+      }
+    },
+    {
+      headers: bearerHeaderSchema,
+      detail: {
+        tags: ["Auth"],
+        summary: "Profil user saat ini",
+        description:
+          "Mengembalikan data user pemilik Bearer token. Tidak menyertakan password.",
+        security: [{ bearerAuth: [] }],
+      },
+    }
+  )
+  .delete(
+    "/logout",
+    async ({ headers, set }) => {
+      const token = extractBearerToken(headers);
+      if (!token) {
         set.status = 401;
         return {
-          error: error.message,
+          error: "Unauthorized",
         };
       }
 
-      set.status = 500;
-      return {
-        error: "Terjadi kesalahan pada server",
-      };
+      try {
+        await logoutUser(token);
+        set.status = 200;
+        return {
+          data: "OK",
+        };
+      } catch (error) {
+        if (error instanceof UnauthorizedError) {
+          set.status = 401;
+          return {
+            error: error.message,
+          };
+        }
+
+        set.status = 500;
+        return {
+          error: "Terjadi kesalahan pada server",
+        };
+      }
+    },
+    {
+      headers: bearerHeaderSchema,
+      detail: {
+        tags: ["Auth"],
+        summary: "Logout user",
+        description:
+          "Menghapus session milik token. Session lain milik user yang sama tetap aktif.",
+        security: [{ bearerAuth: [] }],
+      },
     }
-  });
+  );
