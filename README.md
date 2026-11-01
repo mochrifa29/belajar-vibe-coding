@@ -25,7 +25,7 @@ Backend REST API untuk autentikasi user, dibangun dengan **Bun**, **ElysiaJS**, 
 - Health check beserta status koneksi database.
 - Validasi request (panjang field, field wajib, tipe data) dengan response error yang konsisten.
 - Dokumentasi API interaktif (Swagger UI) di `/swagger` dan spesifikasi OpenAPI di `/swagger/json`.
-- Test otomatis untuk seluruh endpoint (63 test) memakai `bun test`.
+- Test otomatis untuk seluruh endpoint (64 test) memakai `bun test`.
 
 ## Technology Stack
 
@@ -111,7 +111,8 @@ Jika service melempar error domain (mis. `DuplicateEmailError`, `AuthenticationE
 │   ├── services/
 │   │   └── users-service.ts   # Business logic user, bcrypt, session, error domain
 │   └── lib/
-│       └── auth.ts            # Helper ekstraksi Bearer token
+│       ├── auth.ts            # Helper ekstraksi Bearer token
+│       └── openapi.ts         # Helper contoh response body untuk Swagger
 ├── test/
 │   ├── helpers/
 │   │   └── db.ts              # Helper test: email unik, cleanup, registrasi, login
@@ -365,7 +366,8 @@ Dokumentasi interaktif dibuat otomatis dari route dan schema Elysia, jadi tidak 
 ### Yang Perlu Diketahui
 
 - Konfigurasi Swagger ada di `src/index.ts` (bagian `.use(swagger({...}))`): judul, versi, deskripsi, `servers`, tag, dan skema `bearerAuth`.
-- Metadata tiap endpoint (`summary`, `description`, `tags`, `security`) didefinisikan lewat opsi `detail` pada route.
+- Metadata tiap endpoint (`summary`, `description`, `tags`, `security`, `responses`) didefinisikan lewat opsi `detail` pada route.
+- Setiap endpoint menampilkan contoh response body untuk status sukses maupun error (`200`, `400`, `401`, `422`, `500` sesuai endpoint). Helper pembuat contoh ada di `src/lib/openapi.ts`.
 - UI Swagger memuat aset JavaScript/CSS dari CDN (unpkg), sehingga halaman memerlukan koneksi internet. Spesifikasi JSON tetap bisa diakses tanpa CDN.
 - Halaman dokumentasi bersifat publik (belum ada autentikasi untuk `/swagger`).
 
@@ -467,9 +469,9 @@ Test memakai **database MySQL yang sama** dengan development, jadi MySQL dan `.e
 | `test/current-user.test.ts` | Bearer token, variasi header, data profil |
 | `test/logout.test.ts` | Penghapusan session, isolasi antar session/user |
 | `test/flows.test.ts` | Alur end-to-end antar endpoint |
-| `test/swagger.test.ts` | Halaman Swagger, spesifikasi OpenAPI, skema bearer, tag |
+| `test/swagger.test.ts` | Halaman Swagger, spesifikasi OpenAPI, skema bearer, tag, contoh response |
 
-Total: **63 test**.
+Total: **64 test**.
 
 ### Cara Test Menjaga Konsistensi Data
 

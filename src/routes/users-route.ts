@@ -9,6 +9,7 @@ import {
   UnauthorizedError,
 } from "../services/users-service";
 import { extractBearerToken } from "../lib/auth";
+import { jsonResponse, jsonResponseWithExamples } from "../lib/openapi";
 
 /**
  * Batas panjang field mengikuti kolom `varchar(255)` di tabel `users`.
@@ -111,6 +112,31 @@ export const usersRoute = new Elysia({ prefix: "/api/users" })
         summary: "Registrasi user baru",
         description:
           "Membuat user baru. Mengembalikan 400 jika email sudah terdaftar.",
+        responses: {
+          200: jsonResponse("User berhasil dibuat", {
+            data: "OK",
+          }),
+          400: jsonResponse("Email sudah terdaftar", {
+            error: "Email sudah terdaftar",
+          }),
+          422: jsonResponseWithExamples("Data request tidak valid", {
+            invalid: {
+              summary: "Validasi umum",
+              value: { error: "Data yang dikirim tidak valid" },
+            },
+            nameTooLong: {
+              summary: "Nama melebihi 255 karakter",
+              value: { error: "Nama maksimal 255 karakter" },
+            },
+            emailTooLong: {
+              summary: "Email melebihi 255 karakter",
+              value: { error: "Email maksimal 255 karakter" },
+            },
+          }),
+          500: jsonResponse("Terjadi kesalahan tak terduga", {
+            error: "Terjadi kesalahan pada server",
+          }),
+        },
       },
     }
   )
@@ -159,6 +185,27 @@ export const usersRoute = new Elysia({ prefix: "/api/users" })
         summary: "Login user",
         description:
           "Memverifikasi email/password lalu membuat session token UUID. Pesan error sengaja sama untuk email tidak terdaftar dan password salah.",
+        responses: {
+          200: jsonResponse("Login berhasil, token session dalam bentuk UUID", {
+            data: "3f2b8c1e-9d4a-4b7e-8c2f-1a2b3c4d5e6f",
+          }),
+          400: jsonResponse("Email tidak terdaftar atau password salah", {
+            error: "Email atau password salah",
+          }),
+          422: jsonResponseWithExamples("Data request tidak valid", {
+            invalid: {
+              summary: "Validasi umum",
+              value: { error: "Data yang dikirim tidak valid" },
+            },
+            emailTooLong: {
+              summary: "Email melebihi 255 karakter",
+              value: { error: "Email maksimal 255 karakter" },
+            },
+          }),
+          500: jsonResponse("Terjadi kesalahan tak terduga", {
+            error: "Terjadi kesalahan pada server",
+          }),
+        },
       },
     }
   )
@@ -201,6 +248,22 @@ export const usersRoute = new Elysia({ prefix: "/api/users" })
         description:
           "Mengembalikan data user pemilik Bearer token. Tidak menyertakan password.",
         security: [{ bearerAuth: [] }],
+        responses: {
+          200: jsonResponse("Data profil user yang sedang login", {
+            data: {
+              id: 1,
+              name: "Budi Santoso",
+              email: "budi@example.com",
+              created_at: "2026-11-01T10:00:00.000Z",
+            },
+          }),
+          401: jsonResponse("Bearer token tidak ada atau session tidak valid", {
+            error: "Unauthorized",
+          }),
+          500: jsonResponse("Terjadi kesalahan tak terduga", {
+            error: "Terjadi kesalahan pada server",
+          }),
+        },
       },
     }
   )
@@ -243,6 +306,17 @@ export const usersRoute = new Elysia({ prefix: "/api/users" })
         description:
           "Menghapus session milik token. Session lain milik user yang sama tetap aktif.",
         security: [{ bearerAuth: [] }],
+        responses: {
+          200: jsonResponse("Session berhasil dihapus", {
+            data: "OK",
+          }),
+          401: jsonResponse("Bearer token tidak ada atau session tidak ditemukan", {
+            error: "Unauthorized",
+          }),
+          500: jsonResponse("Terjadi kesalahan tak terduga", {
+            error: "Terjadi kesalahan pada server",
+          }),
+        },
       },
     }
   );

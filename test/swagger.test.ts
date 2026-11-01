@@ -1,6 +1,17 @@
 import { describe, expect, it } from "bun:test";
 import { api } from "./helpers/db";
 
+interface OpenAPIResponse {
+  description?: string;
+  content?: {
+    "application/json"?: {
+      schema?: unknown;
+      example?: unknown;
+      examples?: Record<string, { summary?: string; value?: unknown }>;
+    };
+  };
+}
+
 interface OpenAPIDocument {
   openapi?: string;
   info?: { title?: string; version?: string };
@@ -13,6 +24,7 @@ interface OpenAPIDocument {
         summary?: string;
         tags?: string[];
         security?: Array<Record<string, unknown>>;
+        responses?: Record<string, OpenAPIResponse>;
       }
     >
   >;
@@ -23,6 +35,15 @@ interface OpenAPIDocument {
     >;
   };
 }
+
+const hasResponseExample = (response?: OpenAPIResponse) => {
+  const media = response?.content?.["application/json"];
+
+  return (
+    media?.example !== undefined ||
+    (media?.examples !== undefined && Object.keys(media.examples).length > 0)
+  );
+};
 
 describe("Dokumentasi API (Swagger/OpenAPI)", () => {
   it("menyajikan halaman Swagger UI", async () => {
@@ -87,5 +108,32 @@ describe("Dokumentasi API (Swagger/OpenAPI)", () => {
 
     const tagNames = (spec.tags ?? []).map((tag) => tag.name);
     expect(tagNames).toEqual(expect.arrayContaining(["System", "Auth"]));
+  });
+
+  it("menampilkan contoh response body pada semua endpoint", async () => {
+    const response = await api("/swagger/json");
+    const spec = (await response.json()) as OpenAPIDocument;
+
+    // Setiap endpoint minimal punya contoh response sukses.
+    for (const methods of Object.values(spec.paths ?? {})) {
+      for (const operation of Object.values(methods)) {
+        expect(hasResponseExample(operation.responses?.["200"])).toBe(true);
+      }
+    }
+
+    const register = spec.paths?.["/api/users"]?.post?.responses;
+    const login = spec.paths?.["/api/users/login"]?.post?.responses;
+    const current = spec.paths?.["/api/users/current"]?.get?.responses;
+    const logout = spec.paths?.["/api/users/logout"]?.delete?.responses;
+
+    for (const status of ["400", "422", "500"]) {
+      expect(hasResponseExample(register?.[status])).toBe(true);
+      expect(hasResponseExample(login?.[status])).toBe(true);
+    }
+
+    for (const status of ["401", "500"]) {
+      expect(hasResponseExample(current?.[status])).toBe(true);
+      expect(hasResponseExample(logout?.[status])).toBe(true);
+    }
   });
 });
