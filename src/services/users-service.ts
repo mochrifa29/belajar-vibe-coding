@@ -128,19 +128,15 @@ export async function getCurrentUser(token: string) {
 }
 
 export async function logoutUser(token: string) {
-  // 1. Verifikasi session ada
-  const [session] = await db
-    .select({ id: sessions.id })
-    .from(sessions)
-    .where(eq(sessions.token, token))
-    .limit(1);
+  // Hapus session dan gunakan affectedRows untuk memastikan token ditemukan.
+  // Dengan begitu logout hanya membutuhkan 1 query ke database.
+  const [result] = await db
+    .delete(sessions)
+    .where(eq(sessions.token, token));
 
-  if (!session) {
+  if (result.affectedRows === 0) {
     throw new UnauthorizedError();
   }
-
-  // 2. Hapus session dari database
-  await db.delete(sessions).where(eq(sessions.token, token));
 
   return { success: true };
 }
