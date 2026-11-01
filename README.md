@@ -9,6 +9,7 @@ Backend REST API untuk autentikasi user, dibangun dengan **Bun**, **ElysiaJS**, 
 - [Arsitektur](#arsitektur)
 - [Schema Database](#schema-database)
 - [API Reference](#api-reference)
+- [Dokumentasi API (Swagger)](#dokumentasi-api-swagger)
 - [Setup Project](#setup-project)
 - [Menjalankan Aplikasi](#menjalankan-aplikasi)
 - [Menjalankan Test](#menjalankan-test)
@@ -23,7 +24,8 @@ Backend REST API untuk autentikasi user, dibangun dengan **Bun**, **ElysiaJS**, 
 - Logout yang menghapus session dari database.
 - Health check beserta status koneksi database.
 - Validasi request (panjang field, field wajib, tipe data) dengan response error yang konsisten.
-- Test otomatis untuk seluruh endpoint (57 test) memakai `bun test`.
+- Dokumentasi API interaktif (Swagger UI) di `/swagger` dan spesifikasi OpenAPI di `/swagger/json`.
+- Test otomatis untuk seluruh endpoint (63 test) memakai `bun test`.
 
 ## Technology Stack
 
@@ -37,6 +39,7 @@ Backend REST API untuk autentikasi user, dibangun dengan **Bun**, **ElysiaJS**, 
 | Database | MySQL 8 | Menyimpan `users` dan `sessions` |
 | Migrasi/schema tool | `drizzle-kit` | `generate`, `push`, `migrate`, `studio` |
 | Password hashing | `Bun.password` (bcrypt) | Tanpa package tambahan, cost 10 |
+| Dokumentasi API | `@elysiajs/swagger` | Swagger UI + spesifikasi OpenAPI 3 |
 | Test runner | `bun:test` | Test in-process lewat `app.handle()` |
 
 ### Library yang Digunakan
@@ -46,6 +49,7 @@ Backend REST API untuk autentikasi user, dibangun dengan **Bun**, **ElysiaJS**, 
 | Package | Versi | Fungsi |
 | --- | --- | --- |
 | `elysia` | `^1.4.30` | Framework HTTP, validasi request, error handler |
+| `@elysiajs/swagger` | `^1.3.1` | Swagger UI dan spesifikasi OpenAPI 3 |
 | `drizzle-orm` | `^0.45.4` | ORM/query builder |
 | `mysql2` | `^3.24.6` | Driver koneksi MySQL (promise API + pool) |
 
@@ -97,7 +101,7 @@ Jika service melempar error domain (mis. `DuplicateEmailError`, `AuthenticationE
 ```
 .
 ├── src/
-│   ├── index.ts               # Entry point: menyusun app + listen ke port 3000
+│   ├── index.ts               # Entry point: swagger, route, health, listen 3000
 │   ├── db/
 │   │   ├── index.ts           # Connection pool MySQL + instance Drizzle
 │   │   └── schema.ts          # Definisi tabel users & sessions + tipe infer
@@ -117,7 +121,8 @@ Jika service melempar error domain (mis. `DuplicateEmailError`, `AuthenticationE
 │   ├── login.test.ts          # Test POST /api/users/login
 │   ├── current-user.test.ts   # Test GET /api/users/current
 │   ├── logout.test.ts         # Test DELETE /api/users/logout
-│   └── flows.test.ts          # Test alur end-to-end antar endpoint
+│   ├── flows.test.ts          # Test alur end-to-end antar endpoint
+│   └── swagger.test.ts        # Test halaman & spesifikasi Swagger/OpenAPI
 ├── drizzle.config.ts          # Konfigurasi drizzle-kit
 ├── package.json
 ├── tsconfig.json
@@ -129,7 +134,7 @@ Jika service melempar error domain (mis. `DuplicateEmailError`, `AuthenticationE
 
 | Layer | Lokasi | Tanggung jawab |
 | --- | --- | --- |
-| Entry point | `src/index.ts` | Membuat instance Elysia, memasang route, `listen(3000)`, mengekspor `app` untuk test |
+| Entry point | `src/index.ts` | Membuat instance Elysia, memasang plugin Swagger, route, `listen(3000)`, mengekspor `app` untuk test |
 | Route | `src/routes/` | Menerima HTTP request, mendefinisikan schema validasi, memanggil service, memetakan error ke status code |
 | Service | `src/services/` | Business logic, query database, hashing password, pembuatan/penghapusan session, class error domain |
 | Database | `src/db/` | Pool koneksi (`index.ts`) dan definisi tabel (`schema.ts`) |
@@ -339,6 +344,31 @@ Kemungkinan error:
 
 - `401 { "error": "Unauthorized" }` — token tidak ada, tidak valid, atau sudah di-logout sebelumnya.
 
+## Dokumentasi API (Swagger)
+
+Dokumentasi interaktif dibuat otomatis dari route dan schema Elysia, jadi tidak perlu menulis ulang daftar endpoint secara manual.
+
+| Halaman | URL | Isi |
+| --- | --- | --- |
+| Swagger UI | `http://localhost:3000/swagger` | Dokumentasi interaktif, bisa mencoba request |
+| Spesifikasi OpenAPI | `http://localhost:3000/swagger/json` | Dokumen OpenAPI 3.0.3 (JSON) |
+
+### Cara Mencoba Endpoint yang Butuh Token
+
+1. Jalankan `POST /api/users` untuk mendaftarkan user (lewat UI atau `curl`).
+2. Jalankan `POST /api/users/login`, lalu salin nilai `data` dari response (token UUID).
+3. Klik tombol **Authorize** di halaman Swagger.
+4. Tempel token **tanpa** kata `Bearer` (cukup UUID-nya), lalu klik Authorize.
+5. Endpoint `GET /api/users/current` dan `DELETE /api/users/logout` sekarang bisa dicoba.
+6. Setelah selesai, klik **Logout** untuk menghapus session dan bersihkan user hasil uji manual.
+
+### Yang Perlu Diketahui
+
+- Konfigurasi Swagger ada di `src/index.ts` (bagian `.use(swagger({...}))`): judul, versi, deskripsi, `servers`, tag, dan skema `bearerAuth`.
+- Metadata tiap endpoint (`summary`, `description`, `tags`, `security`) didefinisikan lewat opsi `detail` pada route.
+- UI Swagger memuat aset JavaScript/CSS dari CDN (unpkg), sehingga halaman memerlukan koneksi internet. Spesifikasi JSON tetap bisa diakses tanpa CDN.
+- Halaman dokumentasi bersifat publik (belum ada autentikasi untuk `/swagger`).
+
 ## Setup Project
 
 ### Prasyarat
@@ -437,8 +467,9 @@ Test memakai **database MySQL yang sama** dengan development, jadi MySQL dan `.e
 | `test/current-user.test.ts` | Bearer token, variasi header, data profil |
 | `test/logout.test.ts` | Penghapusan session, isolasi antar session/user |
 | `test/flows.test.ts` | Alur end-to-end antar endpoint |
+| `test/swagger.test.ts` | Halaman Swagger, spesifikasi OpenAPI, skema bearer, tag |
 
-Total: **57 test**.
+Total: **63 test**.
 
 ### Cara Test Menjaga Konsistensi Data
 
@@ -479,3 +510,4 @@ Catatan: `src/index.ts` menjalankan `.listen(3000)` saat di-import, sehingga pro
 - Belum ada rate limiting, captcha, CORS, atau refresh token.
 - Token session tidak memiliki masa kedaluwarsa; session hanya hilang saat logout.
 - Body JSON yang rusak dibalas teks `400 Bad Request`, belum memakai format `{ "error": ... }`.
+- Halaman Swagger UI membutuhkan koneksi internet karena memuat aset dari CDN.
