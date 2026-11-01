@@ -1,130 +1,140 @@
-import { describe, expect, it } from "bun:test";
-import { app } from "../src";
-import { db } from "../src/db";
-import { sessions } from "../src/db/schema";
-import { eq } from "drizzle-orm";
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import {
+  api,
+  bearer,
+  cleanupTestUsers,
+  countSessionsByUser,
+  createTestUser,
+  getSession,
+  loginAndGetToken,
+} from "./helpers/db";
+
+const PREFIX = "logout";
 
 describe("DELETE /api/users/logout - User Logout", () => {
-  const timestamp = Date.now();
-  const testUser = {
-    name: "Logout User",
-    email: `logout_test_${timestamp}@localhost`,
-    password: "rahasia",
-  };
-  let authToken = "";
-
-  it("should setup user and login to obtain session token", async () => {
-    // 1. Register user
-    const registerRes = await app.handle(
-      new Request("http://localhost:3000/api/users", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(testUser),
-      })
-    );
-    expect(registerRes.status).toBe(200);
-
-    // 2. Login to get token
-    const loginRes = await app.handle(
-      new Request("http://localhost:3000/api/users/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: testUser.email,
-          password: testUser.password,
-        }),
-      })
-    );
-    expect(loginRes.status).toBe(200);
-    const loginBody = (await loginRes.json()) as { data?: string };
-    expect(loginBody.data).toBeDefined();
-    authToken = loginBody.data!;
-
-    // 3. Confirm session exists in DB
-    const [sessionInDb] = await db
-      .select()
-      .from(sessions)
-      .where(eq(sessions.token, authToken));
-    expect(sessionInDb).toBeDefined();
+  beforeEach(async () => {
+    await cleanupTestUsers(PREFIX);
   });
 
-  it("should logout successfully with valid token and delete session from DB", async () => {
-    const res = await app.handle(
-      new Request("http://localhost:3000/api/users/logout", {
-        method: "DELETE",
-        headers: {
-          Authorization: `Bearer ${authToken}`,
-        },
-      })
-    );
-
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as { data?: string };
-    expect(body).toEqual({ data: "OK" });
-
-    // Verify session record is completely removed from DB
-    const [deletedSession] = await db
-      .select()
-      .from(sessions)
-      .where(eq(sessions.token, authToken));
-    expect(deletedSession).toBeUndefined();
+  afterEach(async () => {
+    await cleanupTestUsers(PREFIX);
   });
 
-  it("should return 401 when trying to get current user with the logged out token", async () => {
-    const res = await app.handle(
-      new Request("http://localhost:3000/api/users/current", {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${authToken}`,
-        },
-      })
-    );
+  it("logout valid menghapus session dari database", async () => {
+    const user = await createTestUser(PREFIX, "valid");
+    const token = await loginAndGetToken(user.email, user.password);
 
-    expect(res.status).toBe(401);
-    const body = (await res.json()) as { error?: string };
-    expect(body).toEqual({ error: "Unauthorized" });
+    const response = await api("/api/users/logout", {
+      method: "DELETE",
+      headers: bearer(token),
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ data: "OK" });
+    expect(await getSession(token)).toBeUndefined();
+    expect(await countSessionsByUser(user.id)).toBe(0);
   });
 
-  it("should return 401 when trying to logout again with the same token", async () => {
-    const res = await app.handle(
-      new Request("http://localhost:3000/api/users/logout", {
-        method: "DELETE",
-        headers: {
-          Authorization: `Bearer ${authToken}`,
-        },
-      })
-    );
+  it("mengembalikan 401 saat current dipakai setelah logout", async () => {
+    const user = await createTestUser(PREFIX, "current-setelah-logout");
+    const token = await loginAndGetToken(user.email, user.password);
 
-    expect(res.status).toBe(401);
-    const body = (await res.json()) as { error?: string };
-    expect(body).toEqual({ error: "Unauthorized" });
+    await api("/api/users/logout", { method: "DELETE", headers: bearer(token) });
+
+    const response = await api("/api/users/current", { headers: bearer(token) });
+    expect(response.status).toBe(401);
   });
 
-  it("should return 401 when Authorization header is missing", async () => {
-    const res = await app.handle(
-      new Request("http://localhost:3000/api/users/logout", {
-        method: "DELETE",
-      })
-    );
+  it("mengembalikan 401 saat logout dua kali dengan token yang sama", async () => {
+    const user = await createTestUser(PREFIX, "logout-ganda");
+    const token = await loginAndGetToken(user.email, user.password);
 
-    expect(res.status).toBe(401);
-    const body = (await res.json()) as { error?: string };
-    expect(body).toEqual({ error: "Unauthorized" });
+    const first = await api("/api/users/logout", {
+      method: "DELETE",
+      headers: bearer(token),
+    });
+    const second = await api("/api/users/logout", {
+      method: "DELETE",
+      headers: bearer(token),
+    });
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(401);
+    expect(await second.json()).toEqual({ error: "Unauthorized" });
   });
 
-  it("should return 401 when token is fake or not found", async () => {
-    const res = await app.handle(
-      new Request("http://localhost:3000/api/users/logout", {
-        method: "DELETE",
-        headers: {
-          Authorization: "Bearer fake-token-12345",
-        },
-      })
-    );
+  it("mengembalikan 401 tanpa header Authorization", async () => {
+    const response = await api("/api/users/logout", { method: "DELETE" });
 
-    expect(res.status).toBe(401);
-    const body = (await res.json()) as { error?: string };
-    expect(body).toEqual({ error: "Unauthorized" });
+    expect(response.status).toBe(401);
+    expect(await response.json()).toEqual({ error: "Unauthorized" });
+  });
+
+  it("mengembalikan 401 untuk skema selain Bearer", async () => {
+    const response = await api("/api/users/logout", {
+      method: "DELETE",
+      headers: { Authorization: "Token abc" },
+    });
+
+    expect(response.status).toBe(401);
+  });
+
+  it("mengembalikan 401 untuk header 'Bearer' tanpa token", async () => {
+    const response = await api("/api/users/logout", {
+      method: "DELETE",
+      headers: { Authorization: "Bearer" },
+    });
+
+    expect(response.status).toBe(401);
+  });
+
+  it("mengembalikan 401 untuk token acak tanpa menghapus session lain", async () => {
+    const user = await createTestUser(PREFIX, "token-acak");
+    const token = await loginAndGetToken(user.email, user.password);
+
+    const response = await api("/api/users/logout", {
+      method: "DELETE",
+      headers: bearer("token-acak-tidak-dikenal"),
+    });
+
+    expect(response.status).toBe(401);
+    expect(await getSession(token)).toBeDefined();
+
+    const current = await api("/api/users/current", { headers: bearer(token) });
+    expect(current.status).toBe(200);
+  });
+
+  it("logout satu session tidak menghapus session lain milik user yang sama", async () => {
+    const user = await createTestUser(PREFIX, "dua-session");
+    const tokenA = await loginAndGetToken(user.email, user.password);
+    const tokenB = await loginAndGetToken(user.email, user.password);
+
+    const response = await api("/api/users/logout", {
+      method: "DELETE",
+      headers: bearer(tokenA),
+    });
+
+    expect(response.status).toBe(200);
+    expect(await getSession(tokenA)).toBeUndefined();
+    expect(await getSession(tokenB)).toBeDefined();
+    expect(await countSessionsByUser(user.id)).toBe(1);
+  });
+
+  it("logout dengan token sendiri tidak menghapus session user lain", async () => {
+    const userA = await createTestUser(PREFIX, "user-a");
+    const userB = await createTestUser(PREFIX, "user-b");
+    const tokenA = await loginAndGetToken(userA.email, userA.password);
+    const tokenB = await loginAndGetToken(userB.email, userB.password);
+
+    const response = await api("/api/users/logout", {
+      method: "DELETE",
+      headers: bearer(tokenA),
+    });
+
+    expect(response.status).toBe(200);
+    expect(await getSession(tokenB)).toBeDefined();
+
+    const currentB = await api("/api/users/current", { headers: bearer(tokenB) });
+    expect(currentB.status).toBe(200);
   });
 });
-
