@@ -1,114 +1,148 @@
-import { describe, expect, it } from "bun:test";
-import { app } from "../src";
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import {
+  api,
+  bearer,
+  cleanupTestUsers,
+  createTestUser,
+  loginAndGetToken,
+} from "./helpers/db";
+
+const PREFIX = "cur";
+
+interface CurrentUserBody {
+  data: {
+    id: number;
+    name: string;
+    email: string;
+    created_at: string;
+  };
+}
 
 describe("GET /api/users/current - Get Current User", () => {
-  const timestamp = Date.now();
-  const testUser = {
-    name: "Eko",
-    email: `current_test_${timestamp}@localhost`,
-    password: "rahasia",
-  };
-  let authToken = "";
-
-  it("should setup user and login to obtain token", async () => {
-    // 1. Register user
-    const registerRes = await app.handle(
-      new Request("http://localhost:3000/api/users", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(testUser),
-      })
-    );
-    expect(registerRes.status).toBe(200);
-
-    // 2. Login to get token
-    const loginRes = await app.handle(
-      new Request("http://localhost:3000/api/users/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: testUser.email,
-          password: testUser.password,
-        }),
-      })
-    );
-    expect(loginRes.status).toBe(200);
-    const loginBody = (await loginRes.json()) as { data?: string };
-    expect(loginBody.data).toBeDefined();
-    authToken = loginBody.data!;
+  beforeEach(async () => {
+    await cleanupTestUsers(PREFIX);
   });
 
-  it("should get current user successfully with valid token", async () => {
-    const res = await app.handle(
-      new Request("http://localhost:3000/api/users/current", {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${authToken}`,
-        },
-      })
-    );
-
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as {
-      data?: {
-        id: number;
-        name: string;
-        email: string;
-        created_at: string;
-        password?: string;
-      };
-    };
-
-    expect(body.data).toBeDefined();
-    expect(body.data?.name).toBe(testUser.name);
-    expect(body.data?.email).toBe(testUser.email);
-    expect(body.data?.id).toBeDefined();
-    expect(body.data?.created_at).toBeDefined();
-    // Security check: password must NOT be returned!
-    expect(body.data?.password).toBeUndefined();
+  afterEach(async () => {
+    await cleanupTestUsers(PREFIX);
   });
 
-  it("should return 401 when Authorization header is missing", async () => {
-    const res = await app.handle(
-      new Request("http://localhost:3000/api/users/current", {
-        method: "GET",
-      })
-    );
+  it("mengembalikan data user yang sedang login", async () => {
+    const user = await createTestUser(PREFIX, "valid", { name: "Eko" });
+    const token = await loginAndGetToken(user.email, user.password);
 
-    expect(res.status).toBe(401);
-    const body = (await res.json()) as { error?: string };
-    expect(body).toEqual({ error: "Unauthorized" });
+    const response = await api("/api/users/current", { headers: bearer(token) });
+
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as CurrentUserBody;
+    expect(body.data.id).toBe(user.id);
+    expect(body.data.name).toBe(user.name);
+    expect(body.data.email).toBe(user.email);
+    expect(body.data.created_at).toBeDefined();
   });
 
-  it("should return 401 when token is invalid or not in sessions", async () => {
-    const fakeToken = "00000000-0000-0000-0000-000000000000";
-    const res = await app.handle(
-      new Request("http://localhost:3000/api/users/current", {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${fakeToken}`,
-        },
-      })
-    );
+  it("tidak menyertakan password di response", async () => {
+    const user = await createTestUser(PREFIX, "no-password");
+    const token = await loginAndGetToken(user.email, user.password);
 
-    expect(res.status).toBe(401);
-    const body = (await res.json()) as { error?: string };
-    expect(body).toEqual({ error: "Unauthorized" });
+    const response = await api("/api/users/current", { headers: bearer(token) });
+    const body = (await response.json()) as CurrentUserBody;
+
+    expect(body.data).not.toHaveProperty("password");
+    expect(JSON.stringify(body)).not.toContain("$2");
   });
 
-  it("should return 401 when Authorization header format is not Bearer", async () => {
-    const res = await app.handle(
-      new Request("http://localhost:3000/api/users/current", {
-        method: "GET",
-        headers: {
-          Authorization: `Basic ${authToken}`,
-        },
-      })
-    );
+  it("mengembalikan 401 tanpa header Authorization", async () => {
+    const response = await api("/api/users/current");
 
-    expect(res.status).toBe(401);
-    const body = (await res.json()) as { error?: string };
-    expect(body).toEqual({ error: "Unauthorized" });
+    expect(response.status).toBe(401);
+    expect(await response.json()).toEqual({ error: "Unauthorized" });
+  });
+
+  it("mengembalikan 401 untuk skema selain Bearer", async () => {
+    const user = await createTestUser(PREFIX, "skema-lain");
+    const token = await loginAndGetToken(user.email, user.password);
+
+    const response = await api("/api/users/current", {
+      headers: { Authorization: `Token ${token}` },
+    });
+
+    expect(response.status).toBe(401);
+    expect(await response.json()).toEqual({ error: "Unauthorized" });
+  });
+
+  it("mengembalikan 401 untuk header 'Bearer' tanpa token", async () => {
+    const response = await api("/api/users/current", {
+      headers: { Authorization: "Bearer" },
+    });
+
+    expect(response.status).toBe(401);
+    expect(await response.json()).toEqual({ error: "Unauthorized" });
+  });
+
+  it("mengembalikan 401 untuk token kosong", async () => {
+    const response = await api("/api/users/current", {
+      headers: { Authorization: "Bearer " },
+    });
+
+    expect(response.status).toBe(401);
+    expect(await response.json()).toEqual({ error: "Unauthorized" });
+  });
+
+  it("mengembalikan 401 untuk token acak yang tidak ada di sessions", async () => {
+    const response = await api("/api/users/current", {
+      headers: bearer("00000000-0000-0000-0000-000000000000"),
+    });
+
+    expect(response.status).toBe(401);
+    expect(await response.json()).toEqual({ error: "Unauthorized" });
+  });
+
+  it("mengembalikan 401 setelah token dipakai logout", async () => {
+    const user = await createTestUser(PREFIX, "setelah-logout");
+    const token = await loginAndGetToken(user.email, user.password);
+
+    const logout = await api("/api/users/logout", {
+      method: "DELETE",
+      headers: bearer(token),
+    });
+    expect(logout.status).toBe(200);
+
+    const response = await api("/api/users/current", { headers: bearer(token) });
+    expect(response.status).toBe(401);
+  });
+
+  it("menerima dua session aktif milik user yang sama", async () => {
+    const user = await createTestUser(PREFIX, "dua-session");
+    const tokenA = await loginAndGetToken(user.email, user.password);
+    const tokenB = await loginAndGetToken(user.email, user.password);
+
+    const responseA = await api("/api/users/current", { headers: bearer(tokenA) });
+    const responseB = await api("/api/users/current", { headers: bearer(tokenB) });
+
+    expect(responseA.status).toBe(200);
+    expect(responseB.status).toBe(200);
+  });
+
+  it("menolak skema 'bearer' dengan huruf kecil", async () => {
+    const user = await createTestUser(PREFIX, "bearer-lowercase");
+    const token = await loginAndGetToken(user.email, user.password);
+
+    const response = await api("/api/users/current", {
+      headers: { Authorization: `bearer ${token}` },
+    });
+
+    expect(response.status).toBe(401);
+  });
+
+  it("menerima spasi berlebih di sekitar token", async () => {
+    const user = await createTestUser(PREFIX, "spasi-berlebih");
+    const token = await loginAndGetToken(user.email, user.password);
+
+    const response = await api("/api/users/current", {
+      headers: { Authorization: `Bearer   ${token}` },
+    });
+
+    expect(response.status).toBe(200);
   });
 });
-
