@@ -34,6 +34,16 @@ export class UnauthorizedError extends Error {
   }
 }
 
+/**
+ * Mendaftarkan user baru.
+ *
+ * Alur: cek apakah email sudah dipakai, hash password dengan bcrypt,
+ * lalu simpan user ke tabel `users`.
+ *
+ * @param input Data registrasi berisi `name`, `email`, dan `password` (plaintext).
+ * @returns `{ success: true }` jika user berhasil dibuat.
+ * @throws {DuplicateEmailError} Jika email sudah terdaftar.
+ */
 export async function registerUser(input: RegisterUserInput) {
   // 1. Cek apakah email sudah terdaftar
   const [existingUser] = await db
@@ -62,6 +72,16 @@ export async function registerUser(input: RegisterUserInput) {
   return { success: true };
 }
 
+/**
+ * Memverifikasi kredensial user lalu membuat session baru.
+ *
+ * Jika email tidak ditemukan atau password salah, error yang dilempar
+ * sengaja sama agar client tidak bisa menebak email mana yang terdaftar.
+ *
+ * @param input Kredensial login berisi `email` dan `password` (plaintext).
+ * @returns Token session (UUID v4) yang disimpan di tabel `sessions`.
+ * @throws {AuthenticationError} Jika email tidak terdaftar atau password salah.
+ */
 export async function loginUser(input: LoginUserInput) {
   // 1. Cari user berdasarkan email
   const [user] = await db
@@ -96,6 +116,16 @@ export async function loginUser(input: LoginUserInput) {
   return { token };
 }
 
+/**
+ * Mengambil profil user pemilik token session.
+ *
+ * Password tidak pernah diambil dari database, sehingga hash-nya tidak
+ * mungkin bocor lewat response endpoint `/current`.
+ *
+ * @param token Token Bearer yang dikirim client.
+ * @returns Data user (`id`, `name`, `email`, `created_at`) tanpa password.
+ * @throws {UnauthorizedError} Jika token tidak ada di `sessions` atau user terkait sudah tidak ada.
+ */
 export async function getCurrentUser(token: string) {
   // 1. Cari session berdasarkan token
   const [session] = await db
@@ -127,6 +157,16 @@ export async function getCurrentUser(token: string) {
   return user;
 }
 
+/**
+ * Menghapus session milik token, sehingga token tidak bisa dipakai lagi.
+ *
+ * Hanya session dengan token tersebut yang dihapus; session lain milik
+ * user yang sama (mis. login di perangkat lain) tetap aktif.
+ *
+ * @param token Token Bearer yang akan di-logout.
+ * @returns `{ success: true }` jika session berhasil dihapus.
+ * @throws {UnauthorizedError} Jika token tidak ditemukan (mis. sudah logout sebelumnya).
+ */
 export async function logoutUser(token: string) {
   // Hapus session dan gunakan affectedRows untuk memastikan token ditemukan.
   // Dengan begitu logout hanya membutuhkan 1 query ke database.
